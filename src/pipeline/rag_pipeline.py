@@ -2,11 +2,11 @@ import numpy as np
 from typing import List, Dict, Tuple
 from pathlib import Path
 
-from ..models.embedding_model import EmbeddingModel
-from ..models.summarizer import MeetingSummarizer
-from ..models.qa_model import QAModel
-from ..retrieval.faiss_index import FAISSIndex
-from ..data.preprocessor import TranscriptPreprocessor
+from models.embedding_model import EmbeddingModel
+from models.summarizer import MeetingSummarizer
+from models.qa_model import QAModel
+from retrieval.faiss_index import FAISSIndex
+from data.preprocessor import TranscriptPreprocessor
 
 class RAGPipeline:
     """End-to-end RAG pipeline for meeting assistant"""

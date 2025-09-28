@@ -1,7 +1,7 @@
 import numpy as np
 from typing import List, Dict, Tuple
-from .faiss_index import FAISSIndex
-from ..models.embedding_model import EmbeddingModel
+from retrieval.faiss_index import FAISSIndex
+from models.embedding_model import EmbeddingModel
 
 class Retriever:
     """Semantic retriever using FAISS and sentence transformers"""
