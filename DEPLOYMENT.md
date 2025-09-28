@@ -7,14 +7,28 @@
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Download spaCy model
-python -m spacy download en_core_web_sm
+# 2. Setup spaCy model (automated)
+python setup_spacy.py
 
 # 3. Test the application
 python test_production.py
 
 # 4. Run the application
 streamlit run app/main.py
+```
+
+### Streamlit Cloud Deployment (Fixed)
+```bash
+# 1. Push to GitHub
+git add .
+git commit -m "Fixed spaCy model installation"
+git push origin main
+
+# 2. Deploy on Streamlit Cloud
+# - Go to share.streamlit.io
+# - Connect your GitHub repository
+# - Set main file path: app/main.py
+# - The app will automatically install spaCy model
 ```
 
 ### Streamlit Cloud Deployment
