@@ -16,14 +16,15 @@ from config.settings import PAGE_CONFIG, EMBEDDING_MODEL, SUMMARIZATION_MODEL, Q
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
 
-# Helper to check if spaCy model is available (optional for basic functionality)
+# Helper to check if spaCy model is available
 def ensure_spacy_model() -> bool:
     try:
         import spacy
-        spacy.load("en_core_web_sm")
+        nlp = spacy.load("en_core_web_sm")
         return True
-    except Exception:
-        # spaCy model not available, but we can still work with basic text processing
+    except Exception as e:
+        st.warning(f"⚠️ spaCy model not available: {str(e)}")
+        st.info("💡 The spaCy model is required for proper text processing. Please restart the app after deployment.")
         return False
 
 # Initialize session state with production-ready configuration
@@ -151,7 +152,11 @@ def upload_and_process_page():
                     with col4:
                         st.metric("Key Points", len(results['key_points']))
                 else:
-                    # Text-only processing (works without spaCy)
+                    # Text processing with spaCy model required
+                    if not ensure_spacy_model():
+                        st.error("❌ spaCy model is required for proper text processing. Please restart the app after deployment.")
+                        return
+                    
                     try:
                         from data.preprocessor import TranscriptPreprocessor
                         preprocessor = TranscriptPreprocessor()
@@ -161,12 +166,8 @@ def upload_and_process_page():
                         action_items = preprocessor.extract_action_items(cleaned)
                         decisions = preprocessor.extract_decisions(cleaned)
                     except Exception as e:
-                        # Fallback to basic text processing
-                        st.warning(f"Advanced text processing unavailable: {e}. Using basic processing.")
-                        cleaned = transcript
-                        speakers = []
-                        action_items = []
-                        decisions = []
+                        st.error(f"❌ Text processing failed: {e}")
+                        return
                     
                     # Simple text-based summary
                     sentences = cleaned.split('. ')
