@@ -240,6 +240,15 @@ def qa_page():
             st.write(f"Action items: {len(results.get('action_items', []))}")
             st.write(f"Decisions: {len(results.get('decisions', []))}")
         
+        # Test pipeline functionality
+        if st.session_state.get('models_loaded', False) and st.session_state.pipeline is not None:
+            if st.button("🧪 Test Pipeline"):
+                try:
+                    test_response = st.session_state.pipeline.answer_question("What is this meeting about?", k=2)
+                    st.write("Test response:", test_response)
+                except Exception as test_error:
+                    st.error(f"Pipeline test failed: {test_error}")
+        
         # Reset session button for debugging
         if st.button("🔄 Reset Session State"):
             for key in ['transcript_processed', 'processed_results', 'pipeline', 'models_loaded']:
@@ -295,14 +304,21 @@ def qa_page():
                         st.error("❌ AI pipeline not loaded. Please click 'Load AI Models' in the sidebar.")
                         return
                     
-                    response = st.session_state.pipeline.answer_question(question, k=k)
-                    
-                    # Track questions asked
-                    st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
-                    
-                    # Display answer with better formatting
-                    st.subheader("💡 AI Answer")
-                    if response and 'answer' in response and response['answer'].strip():
+                    try:
+                        response = st.session_state.pipeline.answer_question(question, k=k)
+                        
+                        # Track questions asked
+                        st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
+                        
+                        # Debug: Show response structure
+                        with st.expander("🔍 Debug Response"):
+                            st.write(f"Response type: {type(response)}")
+                            st.write(f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'Not a dict'}")
+                            st.write(f"Response content: {str(response)[:200]}...")
+                        
+                        # Display answer with better formatting
+                        st.subheader("💡 AI Answer")
+                        if response and isinstance(response, dict) and 'answer' in response and response['answer'].strip():
                         # Format the answer nicely
                         answer = response['answer'].strip()
                         if len(answer) > max_answer_length:
@@ -318,20 +334,24 @@ def qa_page():
                             else:
                                 st.warning(f"⚠️ Low confidence: {confidence:.2f}")
                     else:
-                        st.warning("⚠️ No answer generated. Try rephrasing your question or check if the transcript contains relevant information.")
+                            st.warning("⚠️ No answer generated. Try rephrasing your question or check if the transcript contains relevant information.")
+                        
+                        # Show context with better formatting
+                        if show_context and response and isinstance(response, dict) and 'context_chunks' in response and response['context_chunks']:
+                            st.subheader("📚 Retrieved Context")
+                            for i, (chunk, score) in enumerate(zip(response['context_chunks'], response.get('scores', [])), 1):
+                                if score > confidence_threshold:
+                                    with st.expander(f"📄 Context {i} (Relevance: {score:.2f})", expanded=False):
+                                        st.write(chunk)
+                                        st.caption(f"Relevance score: {score:.3f}")
+                                else:
+                                    with st.expander(f"📄 Context {i} (Low relevance: {score:.2f})", expanded=False):
+                                        st.write(chunk)
+                                        st.caption(f"⚠️ Low relevance: {score:.3f}")
                     
-                    # Show context with better formatting
-                    if show_context and response and 'context_chunks' in response and response['context_chunks']:
-                        st.subheader("📚 Retrieved Context")
-                        for i, (chunk, score) in enumerate(zip(response['context_chunks'], response.get('scores', [])), 1):
-                            if score > confidence_threshold:
-                                with st.expander(f"📄 Context {i} (Relevance: {score:.2f})", expanded=False):
-                                    st.write(chunk)
-                                    st.caption(f"Relevance score: {score:.3f}")
-                            else:
-                                with st.expander(f"📄 Context {i} (Low relevance: {score:.2f})", expanded=False):
-                                    st.write(chunk)
-                                    st.caption(f"⚠️ Low relevance: {score:.3f}")
+                    except Exception as qa_error:
+                        st.error(f"❌ Q&A processing failed: {str(qa_error)}")
+                        st.info("💡 Try: 1) Load AI Models, 2) Process transcript, 3) Ask simpler questions")
                 else:
                     # Text-based Q&A
                     results = st.session_state.processed_results
