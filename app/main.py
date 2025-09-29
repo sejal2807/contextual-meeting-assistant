@@ -304,94 +304,114 @@ def qa_page():
                         st.error("❌ AI pipeline not loaded. Please click 'Load AI Models' in the sidebar.")
                         return
                     
-                    try:
-                        response = st.session_state.pipeline.answer_question(question, k=k)
+                    # Simple Q&A using processed results
+                    st.subheader("💡 AI Answer")
+                    
+                    # Get processed results
+                    results = st.session_state.processed_results
+                    
+                    # Simple keyword-based Q&A
+                    question_lower = question.lower()
+                    answer_parts = []
+                    
+                    # Check for decisions
+                    if 'decision' in question_lower or 'decide' in question_lower:
+                        if results.get('decisions'):
+                            answer_parts.append("**Decisions made:**")
+                            for i, decision in enumerate(results['decisions'], 1):
+                                answer_parts.append(f"{i}. {decision}")
+                        else:
+                            answer_parts.append("No specific decisions were mentioned in the meeting.")
+                    
+                    # Check for action items
+                    if 'action' in question_lower or 'task' in question_lower or 'todo' in question_lower:
+                        if results.get('action_items'):
+                            answer_parts.append("**Action items:**")
+                            for i, item in enumerate(results['action_items'], 1):
+                                answer_parts.append(f"{i}. {item}")
+                        else:
+                            answer_parts.append("No specific action items were identified.")
+                    
+                    # Check for participants
+                    if 'who' in question_lower or 'participant' in question_lower or 'people' in question_lower:
+                        if results.get('speakers'):
+                            speakers = [speaker[0] for speaker in results['speakers']]
+                            unique_speakers = list(set(speakers))
+                            answer_parts.append(f"**Participants:** {', '.join(unique_speakers)}")
+                        else:
+                            answer_parts.append("Speaker information not available.")
+                    
+                    # Check for key points
+                    if 'key' in question_lower or 'main' in question_lower or 'important' in question_lower:
+                        if results.get('key_points'):
+                            answer_parts.append("**Key points discussed:**")
+                            for i, point in enumerate(results['key_points'][:5], 1):
+                                answer_parts.append(f"{i}. {point}")
+                        else:
+                            answer_parts.append("Key points not extracted.")
+                    
+                    # Check for summary
+                    if 'summary' in question_lower or 'overview' in question_lower or 'about' in question_lower:
+                        if results.get('summary'):
+                            answer_parts.append(f"**Meeting summary:** {results['summary']}")
+                        else:
+                            answer_parts.append("Summary not available.")
+                    
+                    # If no specific match, provide general info
+                    if not answer_parts:
+                        answer_parts.append("Based on the meeting transcript:")
+                        if results.get('summary'):
+                            answer_parts.append(f"**Summary:** {results['summary']}")
+                        if results.get('key_points'):
+                            answer_parts.append("**Key points:**")
+                            for i, point in enumerate(results['key_points'][:3], 1):
+                                answer_parts.append(f"{i}. {point}")
+                    
+                    # Display the answer
+                    if answer_parts:
+                        answer_text = "\n\n".join(answer_parts)
+                        if len(answer_text) > max_answer_length:
+                            answer_text = answer_text[:max_answer_length] + "..."
+                        st.success(f"**Answer:**\n\n{answer_text}")
                         
                         # Track questions asked
                         st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
-                        
-                        # Debug: Show response structure
-                        with st.expander("🔍 Debug Response"):
-                            st.write(f"Response type: {type(response)}")
-                            st.write(f"Response keys: {list(response.keys()) if isinstance(response, dict) else 'Not a dict'}")
-                            st.write(f"Response content: {str(response)[:200]}...")
-                        
-                        # Display answer with better formatting
-                        st.subheader("💡 AI Answer")
-                        
-                        # Handle different response formats
-                        answer = None
-                        if isinstance(response, dict):
-                            if 'answer' in response:
-                                answer = response['answer']
-                            elif 'response' in response:
-                                answer = response['response']
-                            elif 'text' in response:
-                                answer = response['text']
-                        elif isinstance(response, str):
-                            answer = response
-                        
-                        if answer and str(answer).strip():
-                            # Format the answer nicely
-                            answer = str(answer).strip()
-                            if len(answer) > max_answer_length:
-                                answer = answer[:max_answer_length] + "..."
-                        
-                        st.success(f"**Answer:** {answer}")
-                        
-                        # Show confidence if available
-                        if 'confidence' in response:
-                            confidence = response['confidence']
-                            if confidence > confidence_threshold:
-                                st.info(f"🎯 Confidence: {confidence:.2f}")
-                            else:
-                                st.warning(f"⚠️ Low confidence: {confidence:.2f}")
                     else:
-                            st.warning("⚠️ No answer generated. Try rephrasing your question or check if the transcript contains relevant information.")
-                        
-                        # Show context with better formatting
-                        if show_context and response and isinstance(response, dict) and 'context_chunks' in response and response['context_chunks']:
-                            st.subheader("📚 Retrieved Context")
-                            for i, (chunk, score) in enumerate(zip(response['context_chunks'], response.get('scores', [])), 1):
-                                if score > confidence_threshold:
-                                    with st.expander(f"📄 Context {i} (Relevance: {score:.2f})", expanded=False):
-                                        st.write(chunk)
-                                        st.caption(f"Relevance score: {score:.3f}")
-                                else:
-                                    with st.expander(f"📄 Context {i} (Low relevance: {score:.2f})", expanded=False):
-                                        st.write(chunk)
-                                        st.caption(f"⚠️ Low relevance: {score:.3f}")
+                        st.warning("⚠️ No relevant information found. Try asking about decisions, action items, participants, or key points.")
                     
-                    except Exception as qa_error:
-                        st.error(f"❌ Q&A processing failed: {str(qa_error)}")
-                        st.info("💡 Try: 1) Load AI Models, 2) Process transcript, 3) Ask simpler questions")
+                    # Show context from processed results
+                    if show_context:
+                        st.subheader("📚 Available Information")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if results.get('decisions'):
+                                with st.expander(f"🎯 Decisions ({len(results['decisions'])})"):
+                                    for i, decision in enumerate(results['decisions'], 1):
+                                        st.write(f"{i}. {decision}")
+                        
+                        with col2:
+                            if results.get('action_items'):
+                                with st.expander(f"✅ Action Items ({len(results['action_items'])})"):
+                                    for i, item in enumerate(results['action_items'], 1):
+                                        st.write(f"{i}. {item}")
+                        
+                        if results.get('key_points'):
+                            with st.expander(f"📊 Key Points ({len(results['key_points'])})"):
+                                for i, point in enumerate(results['key_points'], 1):
+                                    st.write(f"{i}. {point}")
+                        
+                        if results.get('speakers'):
+                            with st.expander(f"👥 Participants ({len(set([s[0] for s in results['speakers']]))})"):
+                                speakers = [speaker[0] for speaker in results['speakers']]
+                                unique_speakers = list(set(speakers))
+                                for speaker in unique_speakers:
+                                    count = speakers.count(speaker)
+                                    st.write(f"**{speaker}**: {count} contributions")
                 else:
-                    # Text-based Q&A
-                    results = st.session_state.processed_results
-                    
-                    # Simple keyword matching
-                    question_lower = question.lower()
-                    relevant_content = []
-                    
-                    if 'action' in question_lower or 'task' in question_lower:
-                        relevant_content.extend(results.get('action_items', []))
-                    
-                    if 'decision' in question_lower:
-                        relevant_content.extend(results.get('decisions', []))
-                    
-                    if 'speaker' in question_lower or 'who' in question_lower:
-                        speakers = results.get('speakers', [])
-                        relevant_content.extend([f"{speaker}: {content}" for speaker, content in speakers[:5]])
-                    
-                    if relevant_content:
-                        st.subheader("💡 Text-Based Answer")
-                        for i, content in enumerate(relevant_content[:3], 1):
-                            st.write(f"{i}. {content}")
-                    else:
-                        st.info("No specific information found. Try asking about action items, decisions, or participants.")
-                
-            except Exception as e:
-                st.error(f"Error generating answer: {str(e)}")
+                    st.error("❌ AI models not loaded. Please click 'Load AI Models' in the sidebar first.")
+                    return
 
 def evaluation_page():
     st.header("📈 System Evaluation & Analytics")
