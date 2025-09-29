@@ -16,38 +16,48 @@ from config.settings import PAGE_CONFIG, EMBEDDING_MODEL, SUMMARIZATION_MODEL, Q
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
 
+# Helper to ensure spaCy model exists (downloads on demand)
+def ensure_spacy_model() -> bool:
+    try:
+        import spacy
+        spacy.load("en_core_web_sm")
+        return True
+    except Exception:
+        try:
+            from spacy.cli import download as spacy_download
+            st.info("Setting up spaCy model 'en_core_web_sm' (first run only)...")
+            spacy_download("en_core_web_sm")
+            import spacy  # re-import after download
+            spacy.load("en_core_web_sm")
+            return True
+        except Exception as spacy_error:
+            st.error(f"spaCy setup failed: {spacy_error}")
+            return False
+
 # Initialize session state with production-ready configuration
 if 'pipeline' not in st.session_state:
+    # Defer heavy AI model loading; start in text mode
+    st.session_state.pipeline = None
+    st.session_state.models_loaded = False
+
+def attempt_load_ai_models():
+    if st.session_state.get('models_loaded', False):
+        return
+    if not ensure_spacy_model():
+        return
     try:
-        # Check if spaCy model is available, auto-install if missing (cloud-safe)
-        try:
-            import spacy
-            nlp = spacy.load("en_core_web_sm")
-        except Exception:
-            try:
-                import spacy
-                from spacy.cli import download as spacy_download
-                st.warning("Downloading spaCy model 'en_core_web_sm' (first run only)...")
-                spacy_download("en_core_web_sm")
-                nlp = spacy.load("en_core_web_sm")
-            except Exception as spacy_error:
-                st.error(f"⚠️ spaCy model setup failed: {str(spacy_error)}")
-                st.session_state.pipeline = None
-                st.session_state.models_loaded = False
-                st.stop()
-        
         config = {
             'embedding_model': EMBEDDING_MODEL,
             'summarization_model': SUMMARIZATION_MODEL,
             'qa_model': QA_MODEL,
             'faiss_index_type': 'IndexFlatIP'
         }
-        st.session_state.pipeline = RAGPipeline(config)
+        with st.spinner("Loading AI models (one-time) ..."):
+            st.session_state.pipeline = RAGPipeline(config)
         st.session_state.models_loaded = True
-        
+        st.success("AI models loaded.")
     except Exception as e:
-        st.error(f"⚠️ Model loading failed: {str(e)}")
-        st.info("💡 Using text processing only. Some AI features may be limited.")
+        st.warning(f"AI model load failed: {e}. Running in text-only mode.")
         st.session_state.pipeline = None
         st.session_state.models_loaded = False
 
@@ -76,6 +86,11 @@ def main():
         st.markdown("• **Contextual Q&A** - RoBERTa-based question answering")
         st.markdown("• **Action Extraction** - Automatic action item detection")
         st.markdown("• **Decision Analysis** - Meeting decision identification")
+        
+        st.markdown("---")
+        if not st.session_state.get('models_loaded', False):
+            if st.button("⚙️ Load AI Models"):
+                attempt_load_ai_models()
     
     if page == "📝 Upload & Process":
         upload_and_process_page()
@@ -145,6 +160,9 @@ def upload_and_process_page():
                         st.metric("Key Points", len(results['key_points']))
                 else:
                     # Text-only processing
+                    if not ensure_spacy_model():
+                        st.error("spaCy model required for text processing could not be set up.")
+                        return
                     from data.preprocessor import TranscriptPreprocessor
                     preprocessor = TranscriptPreprocessor()
                     
