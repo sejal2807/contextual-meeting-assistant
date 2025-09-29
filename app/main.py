@@ -412,6 +412,10 @@ def qa_page():
                 else:
                     st.error("❌ AI models not loaded. Please click 'Load AI Models' in the sidebar first.")
                     return
+            
+            except Exception as e:
+                st.error(f"❌ Error processing question: {str(e)}")
+                st.info("💡 Try refreshing the page and processing the transcript again.")
 
 def evaluation_page():
     st.header("📈 System Evaluation & Analytics")
