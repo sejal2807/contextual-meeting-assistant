@@ -19,16 +19,22 @@ st.set_page_config(**PAGE_CONFIG)
 # Initialize session state with production-ready configuration
 if 'pipeline' not in st.session_state:
     try:
-        # Check if spaCy model is available
+        # Check if spaCy model is available, auto-install if missing (cloud-safe)
         try:
             import spacy
             nlp = spacy.load("en_core_web_sm")
-        except Exception as spacy_error:
-            st.error(f"⚠️ spaCy model not found: {str(spacy_error)}")
-            st.info("💡 To fix this, run: `python -m spacy download en_core_web_sm`")
-            st.session_state.pipeline = None
-            st.session_state.models_loaded = False
-            st.stop()
+        except Exception:
+            try:
+                import spacy
+                from spacy.cli import download as spacy_download
+                st.warning("Downloading spaCy model 'en_core_web_sm' (first run only)...")
+                spacy_download("en_core_web_sm")
+                nlp = spacy.load("en_core_web_sm")
+            except Exception as spacy_error:
+                st.error(f"⚠️ spaCy model setup failed: {str(spacy_error)}")
+                st.session_state.pipeline = None
+                st.session_state.models_loaded = False
+                st.stop()
         
         config = {
             'embedding_model': EMBEDDING_MODEL,
