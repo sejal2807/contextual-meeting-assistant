@@ -8,17 +8,17 @@ MODELS_DIR = PROJECT_ROOT / "models"
 EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
 # Model configurations
-EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-SUMMARIZATION_MODEL = "facebook/bart-large-cnn"
-QA_MODEL = "deepset/roberta-base-squad2"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # small and fast
+SUMMARIZATION_MODEL = "sshleifer/distilbart-cnn-12-6"  # lighter than bart-large
+QA_MODEL = "deepset/tinyroberta-squad2"  # smaller QA model
 
 # FAISS configuration
 FAISS_INDEX_TYPE = "IndexFlatIP"  # Inner product for cosine similarity
 EMBEDDING_DIM = 384  # Dimension for all-MiniLM-L6-v2
 
 # Processing parameters
-CHUNK_SIZE = 512
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = 350
+CHUNK_OVERLAP = 30
 MAX_SUMMARY_LENGTH = 150
 MIN_SUMMARY_LENGTH = 30
 
