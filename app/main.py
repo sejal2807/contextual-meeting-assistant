@@ -22,9 +22,15 @@ def ensure_spacy_model() -> bool:
         import spacy
         nlp = spacy.load("en_core_web_sm")
         return True
+    except OSError as e:
+        if "Can't find model" in str(e):
+            st.error("❌ spaCy model 'en_core_web_sm' not found")
+            st.info("💡 The model should be installed automatically. If this persists, the deployment may need to be restarted.")
+        else:
+            st.error(f"❌ spaCy model error: {str(e)}")
+        return False
     except Exception as e:
-        st.warning(f"⚠️ spaCy model not available: {str(e)}")
-        st.info("💡 The spaCy model is required for proper text processing. Please restart the app after deployment.")
+        st.error(f"❌ Unexpected spaCy error: {str(e)}")
         return False
 
 # Initialize session state with production-ready configuration
