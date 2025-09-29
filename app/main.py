@@ -16,15 +16,14 @@ from config.settings import PAGE_CONFIG, EMBEDDING_MODEL, SUMMARIZATION_MODEL, Q
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
 
-# Helper to check if spaCy model is available
+# Helper to check if spaCy model is available (optional for basic functionality)
 def ensure_spacy_model() -> bool:
     try:
         import spacy
         spacy.load("en_core_web_sm")
         return True
-    except Exception as spacy_error:
-        st.error(f"spaCy model not available: {spacy_error}")
-        st.info("💡 The spaCy model should be installed automatically. If this persists, contact support.")
+    except Exception:
+        # spaCy model not available, but we can still work with basic text processing
         return False
 
 # Initialize session state with production-ready configuration
@@ -152,17 +151,22 @@ def upload_and_process_page():
                     with col4:
                         st.metric("Key Points", len(results['key_points']))
                 else:
-                    # Text-only processing
-                    if not ensure_spacy_model():
-                        st.error("spaCy model required for text processing could not be set up.")
-                        return
-                    from data.preprocessor import TranscriptPreprocessor
-                    preprocessor = TranscriptPreprocessor()
-                    
-                    cleaned = preprocessor.clean_text(transcript)
-                    speakers = preprocessor.extract_speakers(cleaned)
-                    action_items = preprocessor.extract_action_items(cleaned)
-                    decisions = preprocessor.extract_decisions(cleaned)
+                    # Text-only processing (works without spaCy)
+                    try:
+                        from data.preprocessor import TranscriptPreprocessor
+                        preprocessor = TranscriptPreprocessor()
+                        
+                        cleaned = preprocessor.clean_text(transcript)
+                        speakers = preprocessor.extract_speakers(cleaned)
+                        action_items = preprocessor.extract_action_items(cleaned)
+                        decisions = preprocessor.extract_decisions(cleaned)
+                    except Exception as e:
+                        # Fallback to basic text processing
+                        st.warning(f"Advanced text processing unavailable: {e}. Using basic processing.")
+                        cleaned = transcript
+                        speakers = []
+                        action_items = []
+                        decisions = []
                     
                     # Simple text-based summary
                     sentences = cleaned.split('. ')
