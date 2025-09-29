@@ -291,9 +291,10 @@ def qa_page():
         with col1:
             k = st.slider("Number of relevant chunks to retrieve", 1, 10, 5)
             show_context = st.checkbox("Show retrieved context", value=True)
+            show_full_answer = st.checkbox("Show full answer (no truncation)", value=False)
         with col2:
             confidence_threshold = st.slider("Confidence threshold", 0.0, 1.0, 0.3, 0.1)
-            max_answer_length = st.slider("Max answer length", 50, 500, 200)
+            max_answer_length = st.slider("Max answer length", 100, 2000, 1000)
     
     if st.button("🔍 Get Answer", type="primary") and question:
         with st.spinner("Generating AI-powered answer..."):
@@ -364,14 +365,23 @@ def qa_page():
                             answer_parts.append(f"**Summary:** {results['summary']}")
                         if results.get('key_points'):
                             answer_parts.append("**Key points:**")
-                            for i, point in enumerate(results['key_points'][:3], 1):
+                            for i, point in enumerate(results['key_points'][:5], 1):
                                 answer_parts.append(f"{i}. {point}")
+                        if results.get('decisions'):
+                            answer_parts.append("**Decisions made:**")
+                            for i, decision in enumerate(results['decisions'][:3], 1):
+                                answer_parts.append(f"{i}. {decision}")
+                        if results.get('action_items'):
+                            answer_parts.append("**Action items:**")
+                            for i, item in enumerate(results['action_items'][:3], 1):
+                                answer_parts.append(f"{i}. {item}")
                     
                     # Display the answer
                     if answer_parts:
                         answer_text = "\n\n".join(answer_parts)
-                        if len(answer_text) > max_answer_length:
-                            answer_text = answer_text[:max_answer_length] + "..."
+                        # Only truncate if not showing full answer and it's longer than limit
+                        if not show_full_answer and len(answer_text) > max_answer_length:
+                            answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
                         st.success(f"**Answer:**\n\n{answer_text}")
                         
                         # Track questions asked
