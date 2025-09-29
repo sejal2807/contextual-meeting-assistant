@@ -39,6 +39,12 @@ if 'pipeline' not in st.session_state:
     st.session_state.pipeline = None
     st.session_state.models_loaded = False
 
+# Initialize other session state variables if not present
+if 'transcript_processed' not in st.session_state:
+    st.session_state.transcript_processed = False
+if 'processed_results' not in st.session_state:
+    st.session_state.processed_results = None
+
 def attempt_load_ai_models():
     if st.session_state.get('models_loaded', False):
         return
@@ -251,14 +257,23 @@ def qa_page():
     st.header("❓ Question & Answer Interface")
     st.markdown("Ask questions about the meeting content and get AI-powered answers.")
     
+    # Check if transcript was processed
     if not st.session_state.get('transcript_processed', False):
-        st.warning("Please process a transcript first in the Upload & Process page")
+        st.warning("⚠️ Please process a transcript first in the Upload & Process page")
+        st.info("💡 Go to 'Upload & Process' → upload/paste transcript → click 'Process Transcript'")
+        return
+    
+    # Check if we have processed results
+    if not st.session_state.get('processed_results'):
+        st.error("❌ No processed results found. Please process a transcript first.")
         return
     
     # Debug info
     with st.expander("🔍 Debug Info"):
         st.write(f"Models loaded: {st.session_state.get('models_loaded', False)}")
         st.write(f"Pipeline available: {st.session_state.pipeline is not None}")
+        st.write(f"Transcript processed: {st.session_state.get('transcript_processed', False)}")
+        st.write(f"Processed results available: {st.session_state.get('processed_results') is not None}")
         if st.session_state.get('processed_results'):
             results = st.session_state.processed_results
             st.write(f"Results keys: {list(results.keys())}")
@@ -266,6 +281,13 @@ def qa_page():
             st.write(f"Key points: {len(results.get('key_points', []))}")
             st.write(f"Action items: {len(results.get('action_items', []))}")
             st.write(f"Decisions: {len(results.get('decisions', []))}")
+        
+        # Reset session button for debugging
+        if st.button("🔄 Reset Session State"):
+            for key in ['transcript_processed', 'processed_results', 'pipeline', 'models_loaded']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
     
     # Question input
     question = st.text_input(
