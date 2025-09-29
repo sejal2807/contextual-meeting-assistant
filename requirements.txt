@@ -9,12 +9,12 @@ wheel
 
 # Core ML (CPU wheels)
 torch==2.7.0
-transformers==4.41.2
+transformers==4.46.2
 sentence-transformers==2.2.2
 faiss-cpu==1.12.0
 datasets==2.18.0
 accelerate==0.29.3
-tokenizers==0.19.1
+tokenizers==0.20.3
 
 # Text processing
 pandas==2.2.3
