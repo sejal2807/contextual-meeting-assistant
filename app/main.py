@@ -318,11 +318,24 @@ def qa_page():
                         
                         # Display answer with better formatting
                         st.subheader("💡 AI Answer")
-                        if response and isinstance(response, dict) and 'answer' in response and response['answer'].strip():
-                        # Format the answer nicely
-                        answer = response['answer'].strip()
-                        if len(answer) > max_answer_length:
-                            answer = answer[:max_answer_length] + "..."
+                        
+                        # Handle different response formats
+                        answer = None
+                        if isinstance(response, dict):
+                            if 'answer' in response:
+                                answer = response['answer']
+                            elif 'response' in response:
+                                answer = response['response']
+                            elif 'text' in response:
+                                answer = response['text']
+                        elif isinstance(response, str):
+                            answer = response
+                        
+                        if answer and str(answer).strip():
+                            # Format the answer nicely
+                            answer = str(answer).strip()
+                            if len(answer) > max_answer_length:
+                                answer = answer[:max_answer_length] + "..."
                         
                         st.success(f"**Answer:** {answer}")
                         
