@@ -8,7 +8,7 @@ setuptools<70
 wheel
 
 # Core ML (CPU wheels)
-torch==2.1.2
+torch==2.7.0
 transformers==4.41.2
 sentence-transformers==2.2.2
 faiss-cpu==1.7.4
