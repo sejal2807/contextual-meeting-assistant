@@ -51,7 +51,7 @@ def attempt_load_ai_models():
             'qa_model': QA_MODEL,
             'faiss_index_type': 'IndexFlatIP'
         }
-        with st.spinner("Loading AI models (one-time) ..."):
+        with st.spinner("Loading lighter AI models (optimized for cloud) ..."):
             st.session_state.pipeline = RAGPipeline(config)
         st.session_state.models_loaded = True
         st.success("AI models loaded.")
