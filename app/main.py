@@ -255,6 +255,18 @@ def qa_page():
         st.warning("Please process a transcript first in the Upload & Process page")
         return
     
+    # Debug info
+    with st.expander("🔍 Debug Info"):
+        st.write(f"Models loaded: {st.session_state.get('models_loaded', False)}")
+        st.write(f"Pipeline available: {st.session_state.pipeline is not None}")
+        if st.session_state.get('processed_results'):
+            results = st.session_state.processed_results
+            st.write(f"Results keys: {list(results.keys())}")
+            st.write(f"Summary length: {len(results.get('summary', ''))}")
+            st.write(f"Key points: {len(results.get('key_points', []))}")
+            st.write(f"Action items: {len(results.get('action_items', []))}")
+            st.write(f"Decisions: {len(results.get('decisions', []))}")
+    
     # Question input
     question = st.text_input(
         "Ask a question about the meeting:",
@@ -272,12 +284,19 @@ def qa_page():
             try:
                 if st.session_state.get('models_loaded', False):
                     # AI-powered Q&A
+                    if st.session_state.pipeline is None:
+                        st.error("❌ AI pipeline not loaded. Please click 'Load AI Models' in the sidebar.")
+                        return
+                    
                     response = st.session_state.pipeline.answer_question(question, k=k)
                     
                     st.subheader("💡 AI Answer")
-                    st.write(response['answer'])
+                    if response and 'answer' in response:
+                        st.write(response['answer'])
+                    else:
+                        st.warning("⚠️ No answer generated. The AI model may need more context.")
                     
-                    if show_context:
+                    if show_context and response and 'context_chunks' in response:
                         st.subheader("📚 Retrieved Context")
                         for i, chunk in enumerate(response['context_chunks'], 1):
                             with st.expander(f"Context {i} (Score: {response['scores'][i-1]:.3f})"):
