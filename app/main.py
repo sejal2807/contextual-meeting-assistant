@@ -16,23 +16,16 @@ from config.settings import PAGE_CONFIG, EMBEDDING_MODEL, SUMMARIZATION_MODEL, Q
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
 
-# Helper to ensure spaCy model exists (downloads on demand)
+# Helper to check if spaCy model is available
 def ensure_spacy_model() -> bool:
     try:
         import spacy
         spacy.load("en_core_web_sm")
         return True
-    except Exception:
-        try:
-            from spacy.cli import download as spacy_download
-            st.info("Setting up spaCy model 'en_core_web_sm' (first run only)...")
-            spacy_download("en_core_web_sm")
-            import spacy  # re-import after download
-            spacy.load("en_core_web_sm")
-            return True
-        except Exception as spacy_error:
-            st.error(f"spaCy setup failed: {spacy_error}")
-            return False
+    except Exception as spacy_error:
+        st.error(f"spaCy model not available: {spacy_error}")
+        st.info("💡 The spaCy model should be installed automatically. If this persists, contact support.")
+        return False
 
 # Initialize session state with production-ready configuration
 if 'pipeline' not in st.session_state:
