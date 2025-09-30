@@ -36,7 +36,7 @@ class QAModel:
         - Caps span length to avoid dumping large chunks
         """
         stride = max(96, self.max_seq_len // 4)
-        enc = self.tokenizer(
+        raw_enc = self.tokenizer(
             question,
             context,
             max_length=self.max_seq_len,
@@ -46,7 +46,9 @@ class QAModel:
             padding="max_length",
             return_tensors="pt"
         )
-        enc = {k: v.to(self.device) for k, v in enc.items() if torch.is_tensor(v)}
+        # Remove fields not accepted by model.forward
+        overflow_to_sample_mapping = raw_enc.pop("overflow_to_sample_mapping", None)
+        enc = {k: v.to(self.device) for k, v in raw_enc.items() if torch.is_tensor(v)}
         num_spans = enc["input_ids"].shape[0]
 
         best_text = ""
