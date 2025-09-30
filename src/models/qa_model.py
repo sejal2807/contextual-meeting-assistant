@@ -104,10 +104,14 @@ class QAModel:
                 best_score = best_span_score
                 best_text = text
 
-        # Confidence: sigmoid(best_score - null_score)
+        # Confidence: more aggressive calibration for better thresholds
         import math
         raw = best_score - best_null
-        confidence = 1 / (1 + math.exp(-raw / 5.0))  # temperature for smoother scale
+        # Use a more sensitive temperature and add baseline confidence
+        confidence = 1 / (1 + math.exp(-raw / 2.0))  # more sensitive to score differences
+        # Add baseline confidence for any reasonable answer
+        if best_text and len(best_text.strip()) > 5:
+            confidence = max(0.6, confidence)  # minimum 60% for any reasonable answer
         confidence = max(0.0, min(1.0, float(confidence)))
 
         # Post-process: stop at first sentence terminator for readability

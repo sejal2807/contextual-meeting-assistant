@@ -337,14 +337,14 @@ def qa_page():
                     answer_text = ans
                     if answer_text.count('\n') > 4:
                         answer_text = ' '.join(answer_text.split())
-                    if not show_full_answer and len(answer_text) > max_answer_length:
-                        answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
+                        if not show_full_answer and len(answer_text) > max_answer_length:
+                            answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
                     
                     if conf >= confidence_threshold and ans:
                         st.success(f"**Answer (confidence: {conf_pct}%):**\n\n{answer_text}")
                     else:
                         st.warning(f"**Low-confidence answer ({conf_pct}%)**\n\n{answer_text if answer_text else 'Try rephrasing the question.'}")
-
+                        
                         # Track questions asked
                         st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
                     

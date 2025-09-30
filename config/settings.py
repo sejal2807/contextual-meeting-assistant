@@ -42,7 +42,7 @@ CROSS_ENCODER_MODEL = os.getenv("CMA_CROSS_ENCODER_MODEL", "cross-encoder/ms-mar
 USE_MMR = os.getenv("CMA_USE_MMR", "true").lower() == "true"
 MMR_LAMBDA = float(os.getenv("CMA_MMR_LAMBDA", "0.5"))
 TOP_K_DEFAULT = int(os.getenv("CMA_TOP_K_DEFAULT", "5"))
-CONFIDENCE_THRESHOLD_DEFAULT = float(os.getenv("CMA_CONFIDENCE_THRESHOLD", "0.3"))
+CONFIDENCE_THRESHOLD_DEFAULT = float(os.getenv("CMA_CONFIDENCE_THRESHOLD", "0.5"))
 
 # Evaluation metrics
 ROUGE_METRICS = ["rouge1", "rouge2", "rougeL"]
