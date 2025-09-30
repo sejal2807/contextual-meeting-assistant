@@ -106,11 +106,16 @@ class QAModel:
                 best_score = best_span_score
                 best_text = text
 
-        # Confidence: more aggressive calibration for better thresholds
+        # Confidence: numerically stable calibration
         import math
         raw = best_score - best_null
-        # Use a more sensitive temperature and add baseline confidence
-        confidence = 1 / (1 + math.exp(-raw / 2.0))  # more sensitive to score differences
+        # Clamp raw score to prevent overflow/underflow
+        raw = max(-50.0, min(50.0, raw))
+        # Use stable sigmoid calculation
+        if raw > 0:
+            confidence = 1 / (1 + math.exp(-raw / 2.0))
+        else:
+            confidence = math.exp(raw / 2.0) / (1 + math.exp(raw / 2.0))
         # Add baseline confidence for any reasonable answer
         if best_text and len(best_text.strip()) > 5:
             confidence = max(0.6, confidence)  # minimum 60% for any reasonable answer
