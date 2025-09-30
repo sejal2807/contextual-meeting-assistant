@@ -2,6 +2,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from typing import List, Dict
 import re
+import os
 
 class MeetingSummarizer:
     """Generate meeting summaries using transformer models"""
@@ -9,9 +10,15 @@ class MeetingSummarizer:
     def __init__(self, model_name: str = "facebook/bart-large-cnn"):
         self.model_name = model_name
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        cache_dir = os.getenv("HF_HOME") or os.getenv("TRANSFORMERS_CACHE")
+        torch_dtype = torch.float16 if self.device == "cuda" else None
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name,
+            torch_dtype=torch_dtype,
+            low_cpu_mem_usage=True,
+            cache_dir=cache_dir
+        )
         self.model.to(self.device)
         self.model.eval()
     
@@ -20,7 +27,7 @@ class MeetingSummarizer:
         # Tokenize input
         inputs = self.tokenizer(
             text,
-            max_length=1024,
+            max_length=768,
             truncation=True,
             padding=True,
             return_tensors="pt"
@@ -32,7 +39,7 @@ class MeetingSummarizer:
                 inputs["input_ids"],
                 max_length=max_length,
                 min_length=min_length,
-                num_beams=4,
+                num_beams=2,
                 early_stopping=True,
                 no_repeat_ngram_size=2
             )

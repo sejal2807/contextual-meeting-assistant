@@ -11,7 +11,21 @@ sys.path.append(str(project_root / "src"))
 sys.path.append(str(project_root))
 
 from pipeline.rag_pipeline import RAGPipeline
-from config.settings import PAGE_CONFIG, EMBEDDING_MODEL, SUMMARIZATION_MODEL, QA_MODEL
+from config.settings import (
+    PAGE_CONFIG,
+    EMBEDDING_MODEL,
+    SUMMARIZATION_MODEL,
+    QA_MODEL,
+    EMBED_BATCH_SIZE,
+    MAX_SEQ_LEN_QA,
+    ENABLE_CROSS_ENCODER_RERANK,
+    CROSS_ENCODER_MODEL,
+    USE_MMR,
+    MMR_LAMBDA,
+    TOP_K_DEFAULT,
+    CONFIDENCE_THRESHOLD_DEFAULT,
+    apply_runtime_safety,
+)
 
 # Configure page
 st.set_page_config(**PAGE_CONFIG)
@@ -51,11 +65,18 @@ def attempt_load_ai_models():
     if not ensure_spacy_model():
         return
     try:
+        apply_runtime_safety()
         config = {
             'embedding_model': EMBEDDING_MODEL,
             'summarization_model': SUMMARIZATION_MODEL,
             'qa_model': QA_MODEL,
-            'faiss_index_type': 'IndexFlatIP'
+            'faiss_index_type': 'IndexFlatIP',
+            'embed_batch_size': EMBED_BATCH_SIZE,
+            'max_seq_len_qa': MAX_SEQ_LEN_QA,
+            'enable_cross_encoder_rerank': ENABLE_CROSS_ENCODER_RERANK,
+            'cross_encoder_model': CROSS_ENCODER_MODEL,
+            'use_mmr': USE_MMR,
+            'mmr_lambda': MMR_LAMBDA,
         }
         with st.spinner("Loading lighter AI models (optimized for cloud) ..."):
             st.session_state.pipeline = RAGPipeline(config)
@@ -289,11 +310,11 @@ def qa_page():
     with st.expander("⚙️ Advanced Options"):
         col1, col2 = st.columns(2)
         with col1:
-            k = st.slider("Number of relevant chunks to retrieve", 1, 10, 5)
+            k = st.slider("Number of relevant chunks to retrieve", 1, 20, TOP_K_DEFAULT)
             show_context = st.checkbox("Show retrieved context", value=True)
             show_full_answer = st.checkbox("Show full answer (no truncation)", value=False)
         with col2:
-            confidence_threshold = st.slider("Confidence threshold", 0.0, 1.0, 0.3, 0.1)
+            confidence_threshold = st.slider("Confidence threshold", 0.0, 1.0, CONFIDENCE_THRESHOLD_DEFAULT, 0.1)
             max_answer_length = st.slider("Max answer length", 100, 2000, 1000)
     
     if st.button("🔍 Get Answer", type="primary") and question:
@@ -305,120 +326,30 @@ def qa_page():
                         st.error("❌ AI pipeline not loaded. Please click 'Load AI Models' in the sidebar.")
                         return
                     
-                    # Simple Q&A using processed results
+                    # Real Q&A using pipeline with confidence
                     st.subheader("💡 AI Answer")
-                    
-                    # Get processed results
-                    results = st.session_state.processed_results
-                    
-                    # Simple keyword-based Q&A
-                    question_lower = question.lower()
-                    answer_parts = []
-                    
-                    # Check for decisions
-                    if 'decision' in question_lower or 'decide' in question_lower:
-                        if results.get('decisions'):
-                            answer_parts.append("**Decisions made:**")
-                            for i, decision in enumerate(results['decisions'], 1):
-                                answer_parts.append(f"{i}. {decision}")
-                        else:
-                            answer_parts.append("No specific decisions were mentioned in the meeting.")
-                    
-                    # Check for action items
-                    if 'action' in question_lower or 'task' in question_lower or 'todo' in question_lower:
-                        if results.get('action_items'):
-                            answer_parts.append("**Action items:**")
-                            for i, item in enumerate(results['action_items'], 1):
-                                answer_parts.append(f"{i}. {item}")
-                        else:
-                            answer_parts.append("No specific action items were identified.")
-                    
-                    # Check for participants
-                    if 'who' in question_lower or 'participant' in question_lower or 'people' in question_lower:
-                        if results.get('speakers'):
-                            speakers = [speaker[0] for speaker in results['speakers']]
-                            unique_speakers = list(set(speakers))
-                            answer_parts.append(f"**Participants:** {', '.join(unique_speakers)}")
-                        else:
-                            answer_parts.append("Speaker information not available.")
-                    
-                    # Check for key points
-                    if 'key' in question_lower or 'main' in question_lower or 'important' in question_lower:
-                        if results.get('key_points'):
-                            answer_parts.append("**Key points discussed:**")
-                            for i, point in enumerate(results['key_points'][:5], 1):
-                                answer_parts.append(f"{i}. {point}")
-                        else:
-                            answer_parts.append("Key points not extracted.")
-                    
-                    # Check for summary
-                    if 'summary' in question_lower or 'overview' in question_lower or 'about' in question_lower:
-                        if results.get('summary'):
-                            answer_parts.append(f"**Meeting summary:** {results['summary']}")
-                        else:
-                            answer_parts.append("Summary not available.")
-                    
-                    # If no specific match, provide general info
-                    if not answer_parts:
-                        answer_parts.append("Based on the meeting transcript:")
-                        if results.get('summary'):
-                            answer_parts.append(f"**Summary:** {results['summary']}")
-                        if results.get('key_points'):
-                            answer_parts.append("**Key points:**")
-                            for i, point in enumerate(results['key_points'][:5], 1):
-                                answer_parts.append(f"{i}. {point}")
-                        if results.get('decisions'):
-                            answer_parts.append("**Decisions made:**")
-                            for i, decision in enumerate(results['decisions'][:3], 1):
-                                answer_parts.append(f"{i}. {decision}")
-                        if results.get('action_items'):
-                            answer_parts.append("**Action items:**")
-                            for i, item in enumerate(results['action_items'][:3], 1):
-                                answer_parts.append(f"{i}. {item}")
-                    
-                    # Display the answer
-                    if answer_parts:
-                        answer_text = "\n\n".join(answer_parts)
-                        # Only truncate if not showing full answer and it's longer than limit
+                    qa_result = st.session_state.pipeline.answer_question(question, k=k)
+                    ans = qa_result.get('answer', '')
+                    conf = qa_result.get('confidence', 0.0)
+                    if conf >= confidence_threshold and ans:
+                        answer_text = ans
                         if not show_full_answer and len(answer_text) > max_answer_length:
                             answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
-                        st.success(f"**Answer:**\n\n{answer_text}")
+                        st.success(f"**Answer (confidence: {conf:.2f}):**\n\n{answer_text}")
+                    else:
+                        st.warning(f"⚠️ Low confidence answer ({conf:.2f}). Try rephrasing the question.")
                         
                         # Track questions asked
                         st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
-                    else:
-                        st.warning("⚠️ No relevant information found. Try asking about decisions, action items, participants, or key points.")
                     
-                    # Show context from processed results
+                    # Show context from processed results and retrieved chunks
                     if show_context:
                         st.subheader("📚 Available Information")
-                        
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if results.get('decisions'):
-                                with st.expander(f"🎯 Decisions ({len(results['decisions'])})"):
-                                    for i, decision in enumerate(results['decisions'], 1):
-                                        st.write(f"{i}. {decision}")
-                        
-                        with col2:
-                            if results.get('action_items'):
-                                with st.expander(f"✅ Action Items ({len(results['action_items'])})"):
-                                    for i, item in enumerate(results['action_items'], 1):
-                                        st.write(f"{i}. {item}")
-                        
-                        if results.get('key_points'):
-                            with st.expander(f"📊 Key Points ({len(results['key_points'])})"):
-                                for i, point in enumerate(results['key_points'], 1):
-                                    st.write(f"{i}. {point}")
-                        
-                        if results.get('speakers'):
-                            with st.expander(f"👥 Participants ({len(set([s[0] for s in results['speakers']]))})"):
-                                speakers = [speaker[0] for speaker in results['speakers']]
-                                unique_speakers = list(set(speakers))
-                                for speaker in unique_speakers:
-                                    count = speakers.count(speaker)
-                                    st.write(f"**{speaker}**: {count} contributions")
+                        qa_result = qa_result if 'qa_result' in locals() else None
+                        if qa_result and qa_result.get('context_chunks'):
+                            with st.expander(f"🔎 Retrieved Chunks ({len(qa_result['context_chunks'])})"):
+                                for i, chunk in enumerate(qa_result['context_chunks'], 1):
+                                    st.write(f"{i}. {chunk}")
                 else:
                     st.error("❌ AI models not loaded. Please click 'Load AI Models' in the sidebar first.")
                     return
