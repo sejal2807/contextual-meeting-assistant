@@ -38,6 +38,7 @@ class RAGPipeline:
         self.retriever = Retriever(self.embedding_model, self.faiss_index, cross_encoder_model_name=cross_encoder_model)
         
         self.is_indexed = False
+        self.last_results: Dict = {}
     
     def process_transcript(self, transcript: str) -> Dict:
         """Process meeting transcript and build index"""
@@ -72,13 +73,14 @@ class RAGPipeline:
         self.faiss_index.add_embeddings(embeddings, metadata)
         self.is_indexed = True
         
-        return {
+        self.last_results = {
             'summary': summary,
             'key_points': key_points,
             'action_items': action_items,
             'decisions': decisions,
             'num_chunks': len(chunks)
         }
+        return self.last_results
     
     def answer_question(self, question: str, k: int = 5) -> Dict:
         """Answer question using RAG with optional reranking and confidence."""
@@ -100,13 +102,40 @@ class RAGPipeline:
         
         # Answer with confidence
         answer, confidence = self.qa_model.get_answer_confidence(question, context)
-        
+
+        # Lightweight intent-based fallback when extractive QA is uncertain
+        used_fallback = False
+        fallback_text = None
+        ql = question.lower()
+        if (not answer or answer == "No answer found" or confidence < 0.45) and self.last_results:
+            if any(t in ql for t in ["decision", "decide"]):
+                decs = self.last_results.get('decisions', [])
+                if decs:
+                    fallback_text = "Decisions: " + "; ".join(decs[:5])
+            elif any(t in ql for t in ["action", "task", "todo"]):
+                acts = self.last_results.get('action_items', [])
+                if acts:
+                    fallback_text = "Action items: " + "; ".join(acts[:5])
+            elif any(t in ql for t in ["key point", "key points", "main topic", "topics", "key discussion", "outcome", "outcomes"]):
+                kps = self.last_results.get('key_points', [])
+                if kps:
+                    fallback_text = "Key points: " + "; ".join(kps[:5])
+            elif any(t in ql for t in ["summary", "overview", "about"]):
+                summ = self.last_results.get('summary')
+                if summ:
+                    fallback_text = summ
+            if fallback_text:
+                used_fallback = True
+                answer = fallback_text
+                confidence = max(confidence, 0.6)
+
         return {
             'answer': answer,
             'confidence': confidence,
             'context_chunks': reranked_chunks,
             'scores': reranked_scores,
-            'metadata': metadata
+            'metadata': metadata,
+            'used_fallback': used_fallback
         }
     
     def save_index(self, filepath: Path):

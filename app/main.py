@@ -343,7 +343,11 @@ def qa_page():
                     if conf >= confidence_threshold and ans:
                         st.success(f"**Answer (confidence: {conf_pct}%):**\n\n{answer_text}")
                     else:
-                        st.warning(f"**Low-confidence answer ({conf_pct}%)**\n\n{answer_text if answer_text else 'Try rephrasing the question.'}")
+                        # If pipeline used fallback, still show in info style
+                        if qa_result.get('used_fallback') and ans:
+                            st.info(f"**Heuristic answer (confidence: {conf_pct}%):**\n\n{answer_text}")
+                        else:
+                            st.warning(f"**Low-confidence answer ({conf_pct}%)**\n\n{answer_text if answer_text else 'Try rephrasing the question.'}")
                         
                         # Track questions asked
                         st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
