@@ -331,8 +331,13 @@ def qa_page():
                     qa_result = st.session_state.pipeline.answer_question(question, k=k)
                     ans = qa_result.get('answer', '')
                     conf = qa_result.get('confidence', 0.0)
+                    # Guard against overly long answers or script-like dumps
+                    max_chars = max_answer_length if not show_full_answer else 10000
                     if conf >= confidence_threshold and ans:
-                        answer_text = ans
+                        answer_text = ans.strip()
+                        # Heuristic: if answer looks like a long block (many newlines), compress
+                        if answer_text.count('\n') > 4:
+                            answer_text = ' '.join(answer_text.split())
                         if not show_full_answer and len(answer_text) > max_answer_length:
                             answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
                         st.success(f"**Answer (confidence: {conf:.2f}):**\n\n{answer_text}")

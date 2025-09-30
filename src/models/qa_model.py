@@ -23,69 +23,101 @@ class QAModel:
         self.model.eval()
         self.max_seq_len = max_seq_len
     
-    def answer_question(self, question: str, context: str) -> str:
-        """Answer a question given a context"""
-        # Tokenize inputs
-        inputs = self.tokenizer(
-            question,
-            context,
-            max_length=self.max_seq_len,
-            truncation=True,
-            padding=True,
-            return_tensors="pt"
-        ).to(self.device)
-        
-        # Get predictions
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-            start_scores = outputs.start_logits
-            end_scores = outputs.end_logits
-        
-        # Find answer span
-        start_idx = torch.argmax(start_scores)
-        end_idx = torch.argmax(end_scores)
-        
-        # Extract answer
-        if start_idx <= end_idx:
-            answer_tokens = inputs["input_ids"][0][start_idx:end_idx + 1]
-            answer = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
-        else:
-            answer = "No answer found"
-        
-        return answer.strip()
+    def answer_question(self, question: str, context: str, max_answer_tokens: int = 60) -> str:
+        """Answer a question given a context with windowing and length cap"""
+        answer, _ = self.get_answer_confidence(question, context, max_answer_tokens=max_answer_tokens)
+        return answer
     
-    def get_answer_confidence(self, question: str, context: str) -> Tuple[str, float]:
-        """Get answer with confidence score"""
-        # Tokenize inputs
-        inputs = self.tokenizer(
+    def get_answer_confidence(self, question: str, context: str, max_answer_tokens: int = 60) -> Tuple[str, float]:
+        """Get best-span answer with calibrated confidence using sliding windows.
+
+        - Uses overflow/stride to cover long contexts
+        - Scores span vs. null (no answer) for SQuAD2-style heads
+        - Caps span length to avoid dumping large chunks
+        """
+        stride = max(96, self.max_seq_len // 4)
+        enc = self.tokenizer(
             question,
             context,
             max_length=self.max_seq_len,
             truncation=True,
-            padding=True,
+            return_overflowing_tokens=True,
+            stride=stride,
+            padding="max_length",
             return_tensors="pt"
-        ).to(self.device)
-        
-        # Get predictions
+        )
+        enc = {k: v.to(self.device) for k, v in enc.items() if torch.is_tensor(v)}
+        num_spans = enc["input_ids"].shape[0]
+
+        best_text = ""
+        best_score = -1e9
+        best_null = -1e9
+
         with torch.no_grad():
-            outputs = self.model(**inputs)
-            start_scores = torch.softmax(outputs.start_logits, dim=-1)
-            end_scores = torch.softmax(outputs.end_logits, dim=-1)
-        
-        # Find answer span
-        start_idx = torch.argmax(start_scores)
-        end_idx = torch.argmax(end_scores)
-        
-        # Calculate confidence
-        confidence = (start_scores[0][start_idx] * end_scores[0][end_idx]).item()
-        
-        # Extract answer
-        if start_idx <= end_idx:
-            answer_tokens = inputs["input_ids"][0][start_idx:end_idx + 1]
-            answer = self.tokenizer.decode(answer_tokens, skip_special_tokens=True)
-        else:
-            answer = "No answer found"
-            confidence = 0.0
-        
-        return answer.strip(), confidence
+            outputs = self.model(**enc)
+            start_logits = outputs.start_logits
+            end_logits = outputs.end_logits
+
+        for i in range(num_spans):
+            start_logit = start_logits[i]
+            end_logit = end_logits[i]
+
+            # Null score (CLS at position 0)
+            null_score = (start_logit[0] + end_logit[0]).item()
+            if null_score > best_null:
+                best_null = null_score
+
+            # Find best valid span <= max_answer_tokens
+            max_len = max_answer_tokens
+            start_idx = torch.argmax(start_logit).item()
+            end_idx = torch.argmax(end_logit).item()
+
+            # Improve span by checking nearby ends within limit
+            best_span_score = -1e9
+            best_start, best_end = 0, 0
+            # Limit search window around peaks to reduce compute
+            start_topk = torch.topk(start_logit, k=min(20, start_logit.shape[0])).indices.tolist()
+            end_topk = torch.topk(end_logit, k=min(20, end_logit.shape[0])).indices.tolist()
+            for s in start_topk:
+                for e in end_topk:
+                    if e < s:
+                        continue
+                    if e - s + 1 > max_len:
+                        continue
+                    score = (start_logit[s] + end_logit[e]).item()
+                    if score > best_span_score:
+                        best_span_score = score
+                        best_start, best_end = s, e
+
+            if best_span_score <= -1e8:
+                continue
+
+            text_ids = enc["input_ids"][i][best_start:best_end+1]
+            text = self.tokenizer.decode(text_ids, skip_special_tokens=True).strip()
+
+            # Prefer shorter, cleaner text
+            text = re.sub(r"\s+", " ", text)
+            if len(text) == 0:
+                continue
+
+            if best_span_score > best_score:
+                best_score = best_span_score
+                best_text = text
+
+        # Confidence: sigmoid(best_score - null_score)
+        import math
+        raw = best_score - best_null
+        confidence = 1 / (1 + math.exp(-raw / 5.0))  # temperature for smoother scale
+        confidence = max(0.0, min(1.0, float(confidence)))
+
+        # Post-process: stop at first sentence terminator for readability
+        if best_text:
+            m = re.search(r"([\.!?])\s", best_text)
+            if m:
+                cut = m.end()
+                best_text = best_text[:cut].strip()
+
+        if not best_text:
+            return "No answer found", 0.0
+        return best_text, confidence
 
