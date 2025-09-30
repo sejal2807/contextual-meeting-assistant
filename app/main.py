@@ -329,21 +329,22 @@ def qa_page():
                     # Real Q&A using pipeline with confidence
                     st.subheader("💡 AI Answer")
                     qa_result = st.session_state.pipeline.answer_question(question, k=k)
-                    ans = qa_result.get('answer', '')
-                    conf = qa_result.get('confidence', 0.0)
+                    ans = (qa_result.get('answer', '') or '').strip()
+                    conf = float(qa_result.get('confidence', 0.0))
+                    conf_pct = int(round(conf * 100))
                     # Guard against overly long answers or script-like dumps
                     max_chars = max_answer_length if not show_full_answer else 10000
+                    answer_text = ans
+                    if answer_text.count('\n') > 4:
+                        answer_text = ' '.join(answer_text.split())
+                    if not show_full_answer and len(answer_text) > max_answer_length:
+                        answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
+                    
                     if conf >= confidence_threshold and ans:
-                        answer_text = ans.strip()
-                        # Heuristic: if answer looks like a long block (many newlines), compress
-                        if answer_text.count('\n') > 4:
-                            answer_text = ' '.join(answer_text.split())
-                        if not show_full_answer and len(answer_text) > max_answer_length:
-                            answer_text = answer_text[:max_answer_length] + "\n\n... (truncated - enable 'Show full answer' to see complete response)"
-                        st.success(f"**Answer (confidence: {conf:.2f}):**\n\n{answer_text}")
+                        st.success(f"**Answer (confidence: {conf_pct}%):**\n\n{answer_text}")
                     else:
-                        st.warning(f"⚠️ Low confidence answer ({conf:.2f}). Try rephrasing the question.")
-                        
+                        st.warning(f"**Low-confidence answer ({conf_pct}%)**\n\n{answer_text if answer_text else 'Try rephrasing the question.'}")
+
                         # Track questions asked
                         st.session_state.questions_asked = st.session_state.get('questions_asked', 0) + 1
                     
