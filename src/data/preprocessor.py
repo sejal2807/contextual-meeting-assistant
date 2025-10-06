@@ -1,6 +1,9 @@
 import re
 import nltk
-import spacy
+try:
+    import spacy
+except Exception:
+    spacy = None
 from typing import List, Dict, Tuple
 import pandas as pd
 from pathlib import Path
@@ -8,10 +11,15 @@ from pathlib import Path
 class TranscriptPreprocessor:
     """Preprocess meeting transcripts for RAG pipeline"""
     
-    def __init__(self):
-        self.nlp = spacy.load("en_core_web_sm")
-        nltk.download('punkt', quiet=True)
-        nltk.download('stopwords', quiet=True)
+    def __init__(self, use_spacy: bool = True):
+        # Optional spaCy load to reduce memory in constrained environments
+        self.nlp = None
+        if use_spacy and spacy is not None:
+            try:
+                self.nlp = spacy.load("en_core_web_sm")
+            except Exception:
+                self.nlp = None
+        # Avoid large nltk downloads in cloud runtime
         
     def clean_text(self, text: str) -> str:
         """Clean and normalize text"""
@@ -44,15 +52,20 @@ class TranscriptPreprocessor:
         if not text or not text.strip():
             return []
 
-        doc = self.nlp(text)
-        sentences = [s.text.strip() for s in doc.sents if s.text and s.text.strip()]
+        if self.nlp is not None:
+            doc = self.nlp(text)
+            sentences = [s.text.strip() for s in doc.sents if s.text and s.text.strip()]
+        else:
+            sentences = [s.strip() for s in re.split(r'[\.!?]\s+', text) if s and s.strip()]
         chunks: List[str] = []
 
         current_tokens = 0
         current_sentences: List[str] = []
 
         def sentence_token_len(s: str) -> int:
-            return len(self.nlp.make_doc(s))
+            if self.nlp is not None:
+                return len(self.nlp.make_doc(s))
+            return max(1, len(s.split()))
 
         for sent in sentences:
             sent_tokens = sentence_token_len(sent)
@@ -90,6 +103,18 @@ class TranscriptPreprocessor:
     
     def extract_action_items(self, text: str) -> List[str]:
         """Extract potential action items using NLP patterns"""
+        if self.nlp is None:
+            # Lightweight regex-only when spaCy not loaded
+            action_items = []
+            action_patterns = [
+                r'(?:will|should|need to|must|have to)\s+[^.]*',
+                r'(?:action|task|todo|follow up|next steps?)[^.]*',
+                r'(?:assign|delegate|responsible for)[^.]*'
+            ]
+            for pattern in action_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                action_items.extend(matches)
+            return [item.strip() for item in action_items if len(item.strip()) > 10]
         doc = self.nlp(text)
         action_items = []
         
@@ -108,6 +133,17 @@ class TranscriptPreprocessor:
     
     def extract_decisions(self, text: str) -> List[str]:
         """Extract decisions made during the meeting"""
+        if self.nlp is None:
+            decisions = []
+            decision_patterns = [
+                r'(?:decided|agreed|concluded|resolved|determined)[^.]*',
+                r'(?:consensus|unanimous|majority)[^.]*',
+                r'(?:final decision|outcome|resolution)[^.]*'
+            ]
+            for pattern in decision_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                decisions.extend(matches)
+            return [decision.strip() for decision in decisions if len(decision.strip()) > 10]
         doc = self.nlp(text)
         decisions = []
         
