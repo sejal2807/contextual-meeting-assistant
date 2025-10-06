@@ -1,6 +1,7 @@
 import numpy as np
 from typing import List, Dict, Tuple
 from pathlib import Path
+import hashlib
 
 from models.embedding_model import EmbeddingModel
 from models.summarizer import MeetingSummarizer
@@ -21,11 +22,9 @@ class RAGPipeline:
             config['embedding_model'],
             batch_size=config.get('embed_batch_size', 16)
         )
-        self.summarizer = MeetingSummarizer(config['summarization_model'])
-        self.qa_model = QAModel(
-            config['qa_model'],
-            max_seq_len=config.get('max_seq_len_qa', 384)
-        )
+        # Lazy-load heavy models on first use
+        self.summarizer = None
+        self.qa_model = None
         
         # Initialize FAISS index
         self.faiss_index = FAISSIndex(
@@ -39,18 +38,58 @@ class RAGPipeline:
         
         self.is_indexed = False
         self.last_results: Dict = {}
+        self.embeddings_dir = Path(self.config.get('embeddings_dir', Path('data/embeddings')))
+        self.processed_dir = Path(self.config.get('processed_dir', Path('data/processed')))
+
+    def _get_summarizer(self) -> MeetingSummarizer:
+        if self.summarizer is None:
+            self.summarizer = MeetingSummarizer(self.config['summarization_model'])
+        return self.summarizer
+
+    def _get_qa_model(self) -> QAModel:
+        if self.qa_model is None:
+            self.qa_model = QAModel(
+                self.config['qa_model'],
+                max_seq_len=self.config.get('max_seq_len_qa', 384)
+            )
+        return self.qa_model
     
     def process_transcript(self, transcript: str) -> Dict:
         """Process meeting transcript and build index"""
+        # Hash transcript for caching/persistence
+        transcript_hash = hashlib.sha256(transcript.encode("utf-8")).hexdigest()[:16]
+        # Attempt to load existing index and processed results for this transcript
+        try:
+            index_path = self.embeddings_dir / f"{transcript_hash}"
+            self.load_index(index_path)
+            self.is_indexed = True
+        except Exception:
+            self.is_indexed = False
+
+        # Try load cached processed metadata (summary, key points, etc.)
+        cached_results = None
+        try:
+            cache_path = self.processed_dir / f"{transcript_hash}.json"
+            if cache_path.exists():
+                import json
+                with open(cache_path, 'r', encoding='utf-8') as f:
+                    cached_results = json.load(f)
+        except Exception:
+            cached_results = None
         # Preprocess transcript
         cleaned_text = self.preprocessor.clean_text(transcript)
         speaker_segments = self.preprocessor.extract_speakers(cleaned_text)
         action_items = self.preprocessor.extract_action_items(cleaned_text)
         decisions = self.preprocessor.extract_decisions(cleaned_text)
         
-        # Generate summary
-        summary = self.summarizer.summarize(cleaned_text)
-        key_points = self.summarizer.extract_key_points(cleaned_text)
+        # Generate summary (lazy-load summarizer)
+        if cached_results is not None:
+            summary = cached_results.get('summary', '')
+            key_points = cached_results.get('key_points', [])
+        else:
+            summarizer = self._get_summarizer()
+            summary = summarizer.summarize(cleaned_text)
+            key_points = summarizer.extract_key_points(cleaned_text)
         
         # Chunk text for indexing
         chunks = self.preprocessor.chunk_text(cleaned_text)
@@ -69,17 +108,30 @@ class RAGPipeline:
                 'decisions': decisions
             })
         
-        # Add to FAISS index
-        self.faiss_index.add_embeddings(embeddings, metadata)
-        self.is_indexed = True
+        # If not already indexed from cache, build the index now
+        if not self.is_indexed:
+            self.faiss_index.add_embeddings(embeddings, metadata)
+            self.is_indexed = True
+            # Persist index
+            index_path = self.embeddings_dir / f"{transcript_hash}"
+            self.save_index(index_path)
         
         self.last_results = {
             'summary': summary,
             'key_points': key_points,
             'action_items': action_items,
             'decisions': decisions,
-            'num_chunks': len(chunks)
+            'num_chunks': len(chunks),
+            'transcript_hash': transcript_hash
         }
+        # Persist processed results cache
+        try:
+            self.processed_dir.mkdir(parents=True, exist_ok=True)
+            import json
+            with open(self.processed_dir / f"{transcript_hash}.json", 'w', encoding='utf-8') as f:
+                json.dump(self.last_results, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
         return self.last_results
     
     def answer_question(self, question: str, k: int = 5) -> Dict:
@@ -100,8 +152,9 @@ class RAGPipeline:
         # Build context from reranked top-k
         context = " ".join(reranked_chunks)
         
-        # Answer with confidence
-        answer, confidence = self.qa_model.get_answer_confidence(question, context)
+        # Answer with confidence (lazy-load QA model)
+        qa_model = self._get_qa_model()
+        answer, confidence = qa_model.get_answer_confidence(question, context)
 
         # Lightweight intent-based fallback when extractive QA is uncertain
         used_fallback = False

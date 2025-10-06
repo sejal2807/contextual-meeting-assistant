@@ -1,6 +1,7 @@
 import streamlit as st
 from typing import Dict, List
 
+
 def qa_interface_component(pipeline, k: int = 5, show_context: bool = False):
     """Component for question and answer interface"""
     # Question input
@@ -15,19 +16,33 @@ def qa_interface_component(pipeline, k: int = 5, show_context: bool = False):
                 # Get answer using RAG
                 response = pipeline.answer_question(question, k=k)
                 
-                # Display answer
+                # Display answer with confidence
                 st.subheader("💡 Answer")
-                st.write(response['answer'])
+                answer = (response.get('answer') or '').strip()
+                confidence = float(response.get('confidence', 0.0))
+                conf_pct = int(round(confidence * 100))
+                if answer and confidence >= 0.5:
+                    st.success(f"Confidence: {conf_pct}%")
+                    st.write(answer)
+                elif answer:
+                    st.warning(f"Low confidence: {conf_pct}%")
+                    st.write(answer)
+                else:
+                    st.error("No answer found. Try rephrasing the question or increasing k.")
                 
                 # Display context if requested
                 if show_context:
                     st.subheader("📚 Retrieved Context")
-                    for i, chunk in enumerate(response['context_chunks'], 1):
-                        with st.expander(f"Context {i} (Score: {response['scores'][i-1]:.3f})"):
+                    context_chunks = response.get('context_chunks', [])
+                    scores = response.get('scores', [])
+                    for i, chunk in enumerate(context_chunks, 1):
+                        score_str = f"{scores[i-1]:.3f}" if i-1 < len(scores) else "-"
+                        with st.expander(f"Context {i} (Score: {score_str})"):
                             st.write(chunk)
                 
             except Exception as e:
                 st.error(f"Error generating answer: {str(e)}")
+
 
 def advanced_options_component():
     """Component for advanced QA options"""

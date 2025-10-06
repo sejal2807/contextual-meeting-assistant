@@ -77,6 +77,8 @@ def attempt_load_ai_models():
             'cross_encoder_model': CROSS_ENCODER_MODEL,
             'use_mmr': USE_MMR,
             'mmr_lambda': MMR_LAMBDA,
+            'embeddings_dir': str(Path('data/embeddings')),
+            'processed_dir': str(Path('data/processed')),
         }
         with st.spinner("Loading lighter AI models (optimized for cloud) ..."):
             st.session_state.pipeline = RAGPipeline(config)

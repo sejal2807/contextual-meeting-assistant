@@ -35,54 +35,47 @@ class Retriever:
         return chunks, scores.tolist(), metadata
 
     def mmr(self, query: str, candidates: List[str], candidate_scores: List[float], lambda_mult: float = 0.5, top_k: int = 5) -> List[int]:
-        """Maximal Marginal Relevance selection returning indices of chosen items."""
+        """Maximal Marginal Relevance (MMR) returning indices of chosen items.
+
+        Greedy selection trades off query relevance and diversity among selected items.
+        """
         if not candidates:
             return []
-        # Precompute embeddings for candidates for diversity term
+
+        import numpy as np
+
+        # Compute embeddings (for diversity) and normalize once
         candidate_embeddings = self.embedding_model.encode(candidates)
         query_embedding = self.embedding_model.encode([query])[0]
+        normed = candidate_embeddings / (np.linalg.norm(candidate_embeddings, axis=1, keepdims=True) + 1e-8)
+        qn = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
 
+        # If caller didn't pass relevance scores, use cosine to query
+        if not candidate_scores:
+            candidate_scores = (normed @ qn).tolist()
+
+        top_k = min(top_k, len(candidates))
         selected: List[int] = []
-        candidate_indices = list(range(len(candidates)))
+        available = list(range(len(candidates)))
 
-        while len(selected) < min(top_k, len(candidates)):
+        while len(selected) < top_k and available:
             best_idx = None
             best_score = -inf
-            for idx in candidate_indices:
+            for idx in available:
                 relevance = candidate_scores[idx]
-                diversity = 0.0
-                if selected:
-                    # cosine similarity to already selected; take max
-                    sim_to_selected = candidate_embeddings[selected] @ candidate_embeddings[idx]
-                    # normalize by norms
-                    # Avoid adding heavy np.linalg.norm per loop by pre-normalizing
-                # Compute normalized vectors
-                # Pre-normalize embeddings
-            # Recompute with normalized embeddings to keep code simple and stable
-            import numpy as np
-            normed = candidate_embeddings / (np.linalg.norm(candidate_embeddings, axis=1, keepdims=True) + 1e-8)
-            qn = query_embedding / (np.linalg.norm(query_embedding) + 1e-8)
-            # Relevance as cosine to query if not provided
-            if candidate_scores is None or len(candidate_scores) == 0:
-                candidate_scores = (normed @ qn).tolist()
-            selected = []
-            available = list(range(len(candidates)))
-            while len(selected) < min(top_k, len(candidates)):
-                best_idx = None
-                best_score = -1e9
-                for idx in available:
-                    relevance = candidate_scores[idx]
-                    if not selected:
-                        score = relevance
-                    else:
-                        max_sim = max((normed[idx] @ normed[j] for j in selected))
-                        score = lambda_mult * relevance - (1 - lambda_mult) * max_sim
-                    if score > best_score:
-                        best_score = score
-                        best_idx = idx
-                selected.append(best_idx)
-                available.remove(best_idx)
-            return selected
+                if not selected:
+                    score = relevance
+                else:
+                    # Max similarity to any selected item (diversity term)
+                    max_sim = max((float(normed[idx] @ normed[j]) for j in selected))
+                    score = lambda_mult * relevance - (1.0 - lambda_mult) * max_sim
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
+            selected.append(best_idx)
+            available.remove(best_idx)
+
+        return selected
     
     def retrieve_with_threshold(self, query: str, k: int = 5, threshold: float = 0.5) -> Tuple[List[str], List[float], List[Dict]]:
         """Retrieve documents above a similarity threshold"""
