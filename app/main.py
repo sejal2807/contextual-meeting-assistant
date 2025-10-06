@@ -94,6 +94,7 @@ def attempt_load_ai_models():
             'chunk_size': lm_chunk,
             'chunk_overlap': lm_overlap,
             'max_chunks': lm_max_chunks,
+            'low_memory_mode': st.session_state.get('low_memory_mode', LOW_MEMORY_MODE_DEFAULT),
             'enable_cross_encoder_rerank': ENABLE_CROSS_ENCODER_RERANK,
             'cross_encoder_model': CROSS_ENCODER_MODEL,
             'use_mmr': USE_MMR,

@@ -17,7 +17,9 @@ class RAGPipeline:
         self.config = config
         
         # Initialize components
-        self.preprocessor = TranscriptPreprocessor()
+        self.low_memory_mode = bool(self.config.get('low_memory_mode', False))
+        # Avoid spaCy load in low-memory mode
+        self.preprocessor = TranscriptPreprocessor(use_spacy=not self.low_memory_mode)
         self.embedding_model = EmbeddingModel(
             config['embedding_model'],
             batch_size=config.get('embed_batch_size', 16)
@@ -82,14 +84,24 @@ class RAGPipeline:
         action_items = self.preprocessor.extract_action_items(cleaned_text)
         decisions = self.preprocessor.extract_decisions(cleaned_text)
         
-        # Generate summary (lazy-load summarizer)
+        # Generate summary (lazy-load summarizer unless low-memory mode)
         if cached_results is not None:
             summary = cached_results.get('summary', '')
             key_points = cached_results.get('key_points', [])
         else:
-            summarizer = self._get_summarizer()
-            summary = summarizer.summarize(cleaned_text)
-            key_points = summarizer.extract_key_points(cleaned_text)
+            if self.low_memory_mode:
+                # Lightweight extractive summary to avoid model load
+                sentences = [s.strip() for s in re.split(r'[\.!?]\s+', cleaned_text) if s.strip()]
+                summary = ' '.join(sentences[:3])[:600]
+                key_points = []
+                for i in range(0, min(len(sentences), 12), 3):
+                    chunk = '. '.join(sentences[i:i+3])
+                    if chunk:
+                        key_points.append(chunk[:120].rstrip())
+            else:
+                summarizer = self._get_summarizer()
+                summary = summarizer.summarize(cleaned_text)
+                key_points = summarizer.extract_key_points(cleaned_text)
         
         # Chunk text for indexing with caps to reduce memory
         chunk_size = int(self.config.get('chunk_size', 300))
