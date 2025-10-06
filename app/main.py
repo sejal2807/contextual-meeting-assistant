@@ -80,7 +80,7 @@ def attempt_load_ai_models():
             'embeddings_dir': str(Path('data/embeddings')),
             'processed_dir': str(Path('data/processed')),
             'confidence_threshold': CONFIDENCE_THRESHOLD_DEFAULT,
-            'enable_hybrid_retrieval': True,
+            'enable_hybrid_retrieval': False,
         }
         with st.spinner("Loading lighter AI models (optimized for cloud) ..."):
             st.session_state.pipeline = RAGPipeline(config)

@@ -45,10 +45,14 @@ class Retriever:
                 # Get BM25 scores for the whole corpus, then select top-k indices
                 bm25_scores_full = self._bm25.get_scores(self._tokenize(query))
                 # Map current metadata back to original indices via text match
-                text_to_index = {t: i for i, t in enumerate(self._bm25_texts)}
+                # Prefer stable bm25_idx when available to avoid building large maps
+                text_to_index = None
                 bm25_for_return = []
                 for meta in metadata:
-                    idx = text_to_index.get(meta['text'], -1)
+                    idx = meta.get('bm25_idx', -1)
+                    if idx == -1 and text_to_index is None:
+                        text_to_index = {t: i for i, t in enumerate(self._bm25_texts)}
+                        idx = text_to_index.get(meta.get('text', ''), -1)
                     bm25_for_return.append(bm25_scores_full[idx] if idx >= 0 else 0.0)
                 # Reciprocal Rank Fusion (RRF) with small constant
                 epsilon = 60.0

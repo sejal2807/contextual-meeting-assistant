@@ -97,15 +97,13 @@ class RAGPipeline:
         # Generate embeddings
         embeddings = self.embedding_model.encode(chunks)
         
-        # Create metadata
+        # Create lightweight metadata per chunk (avoid duplicating large structures)
         metadata = []
         for i, chunk in enumerate(chunks):
             metadata.append({
                 'chunk_id': i,
-                'text': chunk,
-                'speaker_segments': speaker_segments,
-                'action_items': action_items,
-                'decisions': decisions
+                'bm25_idx': i,  # stable index for BM25 mapping
+                'text': chunk
             })
         
         # If not already indexed from cache, build the index now
@@ -119,8 +117,8 @@ class RAGPipeline:
         # Build/update BM25 corpus for hybrid retrieval
         try:
             self.retriever.build_bm25([m['text'] for m in metadata])
-            # Enable hybrid by default; can be toggled off via UI/config
-            self.retriever.set_hybrid_enabled(self.config.get('enable_hybrid_retrieval', True))
+            # Enable hybrid based on config (can be turned off to save memory)
+            self.retriever.set_hybrid_enabled(self.config.get('enable_hybrid_retrieval', False))
         except Exception:
             # If BM25 unavailable, continue with dense-only
             self.retriever.set_hybrid_enabled(False)
