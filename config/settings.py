@@ -24,8 +24,9 @@ FAISS_INDEX_TYPE = os.getenv("CMA_FAISS_INDEX_TYPE", "IndexFlatIP")  # Inner pro
 EMBEDDING_DIM = int(os.getenv("CMA_EMBEDDING_DIM", "384"))  # all-MiniLM-L6-v2
 
 # Processing parameters
-CHUNK_SIZE = int(os.getenv("CMA_CHUNK_SIZE", "350"))
-CHUNK_OVERLAP = int(os.getenv("CMA_CHUNK_OVERLAP", "30"))
+CHUNK_SIZE = int(os.getenv("CMA_CHUNK_SIZE", "300"))
+CHUNK_OVERLAP = int(os.getenv("CMA_CHUNK_OVERLAP", "20"))
+MAX_CHUNKS = int(os.getenv("CMA_MAX_CHUNKS", "400"))
 MAX_SUMMARY_LENGTH = int(os.getenv("CMA_MAX_SUMMARY_LENGTH", "150"))
 MIN_SUMMARY_LENGTH = int(os.getenv("CMA_MIN_SUMMARY_LENGTH", "30"))
 
@@ -33,15 +34,15 @@ MIN_SUMMARY_LENGTH = int(os.getenv("CMA_MIN_SUMMARY_LENGTH", "30"))
 HF_CACHE_DIR = os.getenv("HF_HOME", os.getenv("TRANSFORMERS_CACHE", str(PROJECT_ROOT / ".hf_cache")))
 TOKENIZERS_PARALLELISM = os.getenv("TOKENIZERS_PARALLELISM", "false")
 TORCH_NUM_THREADS = int(os.getenv("CMA_TORCH_NUM_THREADS", "1"))
-EMBED_BATCH_SIZE = int(os.getenv("CMA_EMBED_BATCH_SIZE", "16"))
-MAX_SEQ_LEN_QA = int(os.getenv("CMA_MAX_SEQ_LEN_QA", "384"))
+EMBED_BATCH_SIZE = int(os.getenv("CMA_EMBED_BATCH_SIZE", "8"))
+MAX_SEQ_LEN_QA = int(os.getenv("CMA_MAX_SEQ_LEN_QA", "256"))
 
 # Reranking / accuracy controls
 ENABLE_CROSS_ENCODER_RERANK = os.getenv("CMA_ENABLE_CROSS_ENCODER_RERANK", "false").lower() == "true"
 CROSS_ENCODER_MODEL = os.getenv("CMA_CROSS_ENCODER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 USE_MMR = os.getenv("CMA_USE_MMR", "true").lower() == "true"
 MMR_LAMBDA = float(os.getenv("CMA_MMR_LAMBDA", "0.5"))
-TOP_K_DEFAULT = int(os.getenv("CMA_TOP_K_DEFAULT", "5"))
+TOP_K_DEFAULT = int(os.getenv("CMA_TOP_K_DEFAULT", "4"))
 CONFIDENCE_THRESHOLD_DEFAULT = float(os.getenv("CMA_CONFIDENCE_THRESHOLD", "0.5"))
 
 # Evaluation metrics

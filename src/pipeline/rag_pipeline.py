@@ -91,8 +91,13 @@ class RAGPipeline:
             summary = summarizer.summarize(cleaned_text)
             key_points = summarizer.extract_key_points(cleaned_text)
         
-        # Chunk text for indexing
-        chunks = self.preprocessor.chunk_text(cleaned_text)
+        # Chunk text for indexing with caps to reduce memory
+        chunk_size = int(self.config.get('chunk_size', 300))
+        overlap = int(self.config.get('chunk_overlap', 20))
+        max_chunks = int(self.config.get('max_chunks', 400))
+        chunks = self.preprocessor.chunk_text(cleaned_text, chunk_size=chunk_size, overlap=overlap)
+        if len(chunks) > max_chunks:
+            chunks = chunks[:max_chunks]
         
         # Generate embeddings
         embeddings = self.embedding_model.encode(chunks)
