@@ -18,12 +18,16 @@ from config.settings import (
     QA_MODEL,
     EMBED_BATCH_SIZE,
     MAX_SEQ_LEN_QA,
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+    MAX_CHUNKS,
     ENABLE_CROSS_ENCODER_RERANK,
     CROSS_ENCODER_MODEL,
     USE_MMR,
     MMR_LAMBDA,
     TOP_K_DEFAULT,
     CONFIDENCE_THRESHOLD_DEFAULT,
+    LOW_MEMORY_MODE_DEFAULT,
     apply_runtime_safety,
 )
 
@@ -66,16 +70,30 @@ def attempt_load_ai_models():
         return
     try:
         apply_runtime_safety()
+        # Compute config, honoring low-memory mode
+        if st.session_state.get('low_memory_mode', LOW_MEMORY_MODE_DEFAULT):
+            lm_chunk = 220
+            lm_overlap = 10
+            lm_max_chunks = 220
+            lm_max_seq = 192
+            lm_batch = 4
+        else:
+            lm_chunk = CHUNK_SIZE
+            lm_overlap = CHUNK_OVERLAP
+            lm_max_chunks = MAX_CHUNKS
+            lm_max_seq = MAX_SEQ_LEN_QA
+            lm_batch = EMBED_BATCH_SIZE
+
         config = {
             'embedding_model': EMBEDDING_MODEL,
             'summarization_model': SUMMARIZATION_MODEL,
             'qa_model': QA_MODEL,
             'faiss_index_type': 'IndexFlatIP',
-            'embed_batch_size': EMBED_BATCH_SIZE,
-            'max_seq_len_qa': MAX_SEQ_LEN_QA,
-            'chunk_size': CHUNK_SIZE if 'CHUNK_SIZE' in globals() else 300,
-            'chunk_overlap': CHUNK_OVERLAP if 'CHUNK_OVERLAP' in globals() else 20,
-            'max_chunks': MAX_CHUNKS if 'MAX_CHUNKS' in globals() else 400,
+            'embed_batch_size': lm_batch,
+            'max_seq_len_qa': lm_max_seq,
+            'chunk_size': lm_chunk,
+            'chunk_overlap': lm_overlap,
+            'max_chunks': lm_max_chunks,
             'enable_cross_encoder_rerank': ENABLE_CROSS_ENCODER_RERANK,
             'cross_encoder_model': CROSS_ENCODER_MODEL,
             'use_mmr': USE_MMR,
@@ -121,6 +139,8 @@ def main():
         st.markdown("• **Decision Analysis** - Meeting decision identification")
         
         st.markdown("---")
+        # Low-memory mode toggle
+        st.session_state.low_memory_mode = st.checkbox("Low-memory mode", value=st.session_state.get('low_memory_mode', LOW_MEMORY_MODE_DEFAULT))
         if not st.session_state.get('models_loaded', False):
             if st.button("⚙️ Load AI Models"):
                 attempt_load_ai_models()

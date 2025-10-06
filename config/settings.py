@@ -36,6 +36,7 @@ TOKENIZERS_PARALLELISM = os.getenv("TOKENIZERS_PARALLELISM", "false")
 TORCH_NUM_THREADS = int(os.getenv("CMA_TORCH_NUM_THREADS", "1"))
 EMBED_BATCH_SIZE = int(os.getenv("CMA_EMBED_BATCH_SIZE", "8"))
 MAX_SEQ_LEN_QA = int(os.getenv("CMA_MAX_SEQ_LEN_QA", "256"))
+LOW_MEMORY_MODE_DEFAULT = os.getenv("CMA_LOW_MEMORY_MODE", "true").lower() == "true"
 
 # Reranking / accuracy controls
 ENABLE_CROSS_ENCODER_RERANK = os.getenv("CMA_ENABLE_CROSS_ENCODER_RERANK", "false").lower() == "true"
