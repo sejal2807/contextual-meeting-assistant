@@ -132,3 +132,74 @@ class QAModel:
             return "No answer found", 0.0
         return best_text, confidence
 
+    def answer_multi_span(self, question: str, context: str, max_spans: int = 3, max_answer_tokens: int = 60) -> Tuple[str, float]:
+        """Extract up to N high-confidence spans and merge into a concise answer.
+
+        Keeps deployment-safe behavior by using the same extractive head.
+        """
+        stride = max(96, self.max_seq_len // 4)
+        raw_enc = self.tokenizer(
+            question,
+            context,
+            max_length=self.max_seq_len,
+            truncation=True,
+            return_overflowing_tokens=True,
+            stride=stride,
+            padding="max_length",
+            return_tensors="pt"
+        )
+        enc = {k: v.to(self.device) for k, v in raw_enc.items() if torch.is_tensor(v)}
+        num_spans = enc["input_ids"].shape[0]
+
+        with torch.no_grad():
+            outputs = self.model(**enc)
+        start_logits = outputs.start_logits
+        end_logits = outputs.end_logits
+
+        spans: List[Tuple[str, float]] = []
+        for i in range(num_spans):
+            sl = start_logits[i]
+            el = end_logits[i]
+            # get top candidates per span
+            k = min(10, sl.shape[0])
+            start_topk = torch.topk(sl, k=k).indices.tolist()
+            end_topk = torch.topk(el, k=k).indices.tolist()
+            for s in start_topk:
+                for e in end_topk:
+                    if e < s:
+                        continue
+                    if e - s + 1 > max_answer_tokens:
+                        continue
+                    score = float(sl[s] + el[e])
+                    text_ids = enc["input_ids"][i][s:e+1]
+                    text = self.tokenizer.decode(text_ids, skip_special_tokens=True).strip()
+                    if len(text) < 3:
+                        continue
+                    spans.append((text, score))
+
+        if not spans:
+            return "No answer found", 0.0
+
+        # sort by score and deduplicate similar text
+        spans.sort(key=lambda x: x[1], reverse=True)
+        merged: List[str] = []
+        seen = set()
+        for text, _ in spans:
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(text)
+            if len(merged) >= max_spans:
+                break
+        answer = "; ".join(merged)
+        # Approximate confidence by sigmoid of normalized score gap between first and mean of next
+        import math
+        top = spans[0][1]
+        mean_next = sum(s for _, s in spans[1:1+max_spans]) / max(1, min(len(spans)-1, max_spans-1))
+        raw = top - mean_next
+        raw = max(-50.0, min(50.0, raw))
+        conf = 1 / (1 + math.exp(-raw / 2.0))
+        conf = max(0.5, min(1.0, float(conf)))
+        return answer, conf
+

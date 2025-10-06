@@ -115,6 +115,15 @@ class RAGPipeline:
             # Persist index
             index_path = self.embeddings_dir / f"{transcript_hash}"
             self.save_index(index_path)
+
+        # Build/update BM25 corpus for hybrid retrieval
+        try:
+            self.retriever.build_bm25([m['text'] for m in metadata])
+            # Enable hybrid by default; can be toggled off via UI/config
+            self.retriever.set_hybrid_enabled(self.config.get('enable_hybrid_retrieval', True))
+        except Exception:
+            # If BM25 unavailable, continue with dense-only
+            self.retriever.set_hybrid_enabled(False)
         
         self.last_results = {
             'summary': summary,
@@ -154,33 +163,50 @@ class RAGPipeline:
         
         # Answer with confidence (lazy-load QA model)
         qa_model = self._get_qa_model()
-        answer, confidence = qa_model.get_answer_confidence(question, context)
+        # Try multi-span aggregation first for list-like queries
+        ql = question.lower()
+        prefer_multi = any(t in ql for t in ["list", "which", "who", "what are", "decisions", "action", "items", "responsible", "participants"])
+        if prefer_multi:
+            answer, confidence = qa_model.answer_multi_span(question, context)
+        else:
+            answer, confidence = qa_model.get_answer_confidence(question, context)
 
-        # Lightweight intent-based fallback when extractive QA is uncertain
+        # Intelligent fallback: if no answer or low confidence, surface best snippet with label
+        threshold = float(self.config.get('confidence_threshold', 0.5))
         used_fallback = False
         fallback_text = None
+        support_snippet = reranked_chunks[0] if reranked_chunks else ""
+        support_score = float(reranked_scores[0]) if reranked_scores else 0.0
+
+        if (not answer or answer == "No answer found" or confidence < threshold):
+            # Try intent-based fallback from processed metadata first
         ql = question.lower()
-        if (not answer or answer == "No answer found" or confidence < 0.45) and self.last_results:
-            if any(t in ql for t in ["decision", "decide"]):
-                decs = self.last_results.get('decisions', [])
-                if decs:
-                    fallback_text = "Decisions: " + "; ".join(decs[:5])
-            elif any(t in ql for t in ["action", "task", "todo"]):
-                acts = self.last_results.get('action_items', [])
-                if acts:
-                    fallback_text = "Action items: " + "; ".join(acts[:5])
-            elif any(t in ql for t in ["key point", "key points", "main topic", "topics", "key discussion", "outcome", "outcomes"]):
-                kps = self.last_results.get('key_points', [])
-                if kps:
-                    fallback_text = "Key points: " + "; ".join(kps[:5])
-            elif any(t in ql for t in ["summary", "overview", "about"]):
-                summ = self.last_results.get('summary')
-                if summ:
-                    fallback_text = summ
+            if self.last_results:
+                if any(t in ql for t in ["decision", "decide"]):
+                    decs = self.last_results.get('decisions', [])
+                    if decs:
+                        fallback_text = "Decisions: " + "; ".join(decs[:5])
+                if not fallback_text and any(t in ql for t in ["action", "task", "todo"]):
+                    acts = self.last_results.get('action_items', [])
+                    if acts:
+                        fallback_text = "Action items: " + "; ".join(acts[:5])
+                if not fallback_text and any(t in ql for t in ["key point", "key points", "main topic", "topics", "outcome", "outcomes"]):
+                    kps = self.last_results.get('key_points', [])
+                    if kps:
+                        fallback_text = "Key points: " + "; ".join(kps[:5])
+                if not fallback_text and any(t in ql for t in ["summary", "overview", "about"]):
+                    summ = self.last_results.get('summary')
+                    if summ:
+                        fallback_text = summ
+
+            # If no metadata-based fallback, return top snippet as supportive context
+            if not fallback_text and support_snippet:
+                fallback_text = support_snippet
             if fallback_text:
                 used_fallback = True
                 answer = fallback_text
-                confidence = max(confidence, 0.6)
+                # Promote confidence to a sane minimum to avoid 0%
+                confidence = max(confidence, 0.35 if support_snippet else 0.5)
 
         return {
             'answer': answer,

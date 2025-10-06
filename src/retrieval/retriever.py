@@ -20,6 +20,11 @@ class Retriever:
                 self.cross_encoder = CrossEncoder(cross_encoder_model_name)
             except Exception:
                 self.cross_encoder = None
+        # BM25 components (lazy)
+        self._bm25 = None
+        self._bm25_corpus_tokens: List[List[str]] = []
+        self._bm25_texts: List[str] = []
+        self._hybrid_enabled: bool = False
     
     def retrieve(self, query: str, k: int = 5) -> Tuple[List[str], List[float], List[Dict]]:
         """Retrieve relevant documents for a query"""
@@ -31,8 +36,38 @@ class Retriever:
         
         # Extract text chunks
         chunks = [meta['text'] for meta in metadata]
+        dense_scores = scores.tolist()
+
+        # If hybrid enabled and BM25 available, fuse scores
+        if self._hybrid_enabled and self._bm25 is not None and self._bm25_texts:
+            try:
+                from rank_bm25 import BM25Okapi  # ensure package exists at runtime
+                # Get BM25 scores for the whole corpus, then select top-k indices
+                bm25_scores_full = self._bm25.get_scores(self._tokenize(query))
+                # Map current metadata back to original indices via text match
+                text_to_index = {t: i for i, t in enumerate(self._bm25_texts)}
+                bm25_for_return = []
+                for meta in metadata:
+                    idx = text_to_index.get(meta['text'], -1)
+                    bm25_for_return.append(bm25_scores_full[idx] if idx >= 0 else 0.0)
+                # Reciprocal Rank Fusion (RRF) with small constant
+                epsilon = 60.0
+                fused = []
+                # Convert dense scores to ranks within returned set
+                dense_rank = {i: r for r, i in enumerate(sorted(range(len(dense_scores)), key=lambda x: dense_scores[x], reverse=True), start=1)}
+                bm25_rank = {i: r for r, i in enumerate(sorted(range(len(bm25_for_return)), key=lambda x: bm25_for_return[x], reverse=True), start=1)}
+                for i in range(len(chunks)):
+                    rrf = 1.0 / (epsilon + dense_rank[i]) + 1.0 / (epsilon + bm25_rank[i])
+                    fused.append(rrf)
+                ranked = sorted(range(len(chunks)), key=lambda i: fused[i], reverse=True)[:k]
+                chunks = [chunks[i] for i in ranked]
+                metadata = [metadata[i] for i in ranked]
+                dense_scores = [dense_scores[i] for i in ranked]
+            except Exception:
+                # Fall back to dense-only if anything goes wrong
+                pass
         
-        return chunks, scores.tolist(), metadata
+        return chunks, dense_scores, metadata
 
     def mmr(self, query: str, candidates: List[str], candidate_scores: List[float], lambda_mult: float = 0.5, top_k: int = 5) -> List[int]:
         """Maximal Marginal Relevance (MMR) returning indices of chosen items.
@@ -115,4 +150,24 @@ class Retriever:
     def get_retrieval_stats(self) -> Dict:
         """Get retrieval statistics"""
         return self.faiss_index.get_stats()
+
+    # ----------------------- Hybrid helpers -----------------------
+    def _tokenize(self, text: str) -> List[str]:
+        return [t for t in text.lower().split() if t]
+
+    def build_bm25(self, texts: List[str]):
+        """Build BM25 over provided texts. Call when (re)indexing transcripts."""
+        try:
+            from rank_bm25 import BM25Okapi
+        except Exception:
+            self._bm25 = None
+            self._bm25_corpus_tokens = []
+            self._bm25_texts = []
+            return
+        self._bm25_texts = list(texts)
+        self._bm25_corpus_tokens = [self._tokenize(t) for t in texts]
+        self._bm25 = BM25Okapi(self._bm25_corpus_tokens)
+
+    def set_hybrid_enabled(self, enabled: bool):
+        self._hybrid_enabled = bool(enabled)
 

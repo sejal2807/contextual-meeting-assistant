@@ -41,3 +41,6 @@ requests==2.32.3
 huggingface_hub==0.23.2
 
 # Note: Dev-only tools removed to speed/stabilize cloud builds
+#
+# Retrieval (lexical)
+rank-bm25==0.2.2
